@@ -1,0 +1,151 @@
+# Written by John Zhau
+# A simulation for the following puzzle:
+# https://puzzling.stackexchange.com/questions/90875/ball-passing-game-with-a-surprise-ending
+
+import numpy as np
+import pygame as pg
+import random
+# from time import sleep
+
+
+
+###################################################
+#                 Declaring stuff                 #
+###################################################
+
+# Object variables
+
+numOfPlayers = 15
+numOfBalls = 5
+reach = 1000 # distance at which the ball can be passed (found "Average human arm length" is 635 mm)
+walk_spd = 135 # mm/s (I googled "Average walking speed for this" and got around 1.3-1.5 m/s)
+min_dist = 3 # numbers of players away from self to pass to (in mm)
+
+# Environment variables
+
+# In mm
+side = 9000
+radius = 6000
+
+# Display variables
+
+env_side = 600
+center = env_side/2
+time_scale = 1
+space_scale = (env_side/side)/2
+bg = (0, 0, 0)
+player_size = 10
+player_color = (255, 255, 255)
+ball_size = 5
+ball_color = (0, 0, 0)
+txt_offset = -5 # Align text with players
+path_color = (255, 0, 0)
+
+# Declaring functions
+
+def dist(o1, o2):
+    return (np.sqrt((o1.pos_x - o2.pos_x)**2 + (o1.pos_y - o2.pos_y)**2))
+
+def toPolar(x, y):
+    rho = np.sqrt(x**2 + y**2)
+    phi = np.arctan2(y, x)
+    return(rho, phi)
+
+def toCarte(rho, phi):
+    x = rho * np.cos(phi)
+    y = rho * np.sin(phi)
+    return(x, y)
+
+# Declaring classes and objects
+
+class players: # There are 15 players
+    
+    def __init__(self, id):
+        self.id = id
+        
+    def assign(self, pos_x, pos_y, target):
+        self.pos_x = pos_x
+        self.pos_y = pos_y
+        self.vel_x = 0
+        self.vel_y = 0
+        self.angle = 0
+        self.ball = 0
+        self.target = target
+        
+    def give(self):
+        self.target.ball = self.ball
+        self.ball = 0
+        
+    def passing(self):
+        
+        if(self.ball != None):
+            # walking towards next player
+            if(dist(self, self.target) > reach):
+                self.vel_x = (self.target.pos_x - self.pos_x)
+                self.vel_y = (self.target.pos_y - self.pos_y)
+                self.vel_x, self.vel_y = toCarte(walk_spd, toPolar(self.vel_x, self.vel_y)[1])
+                self.pos_x += self.vel_x
+                self.pos_y += self.vel_y
+            else:
+                # pass ball to next player
+                self.give()
+
+
+
+###################################################
+#       Initiate objects and environment          #
+###################################################
+
+print("Initiating stuff...\n")
+
+# Initiating Players
+player = [players(i) for i in range(numOfPlayers)]
+choices_p = [i for i in range(numOfPlayers)]
+for p in range(len(player)):
+    # Getting player positions
+    player_pos = toCarte(radius, np.pi*(2/numOfPlayers) * p)
+    # Getting who passes to whom
+    next_p = random.choice(choices_p)
+    while( (abs(next_p - p) <= min_dist) & (len(choices_p) >= (min_dist * 2) + 2) & (p == numOfPlayers-1) & (next_p == 0)  & (p == next_p)):
+        # Target has to be some number of people away
+        # If number of people left < ( (min_dist * 2) + 2) : Ignore previous condition
+        # Last 3 conditions to help prevent separate circular linked lists
+        next_p = random.choice(choices_p)
+    choices_p.remove(next_p)
+    # Assign position and person to receive ball from and give ball to
+    player[p].assign(player_pos[0], player_pos[1], player[next_p])
+player[0].ball = numOfBalls # Player 0 starts out with all balls
+
+input("Initialization complete! Press [Enter] to start simulation...\n")
+
+
+###################################################
+#                   Stuff happens                 #
+###################################################
+
+pg.init()
+main = pg.display.set_mode((env_side, env_side))
+font = pg.font.Font('freesansbold.ttf', 10)
+
+running = True
+
+while(running):
+    main.fill(bg)
+    for event in pg.event.get():
+        if event.type == pg.QUIT:
+            running = False
+            
+    for p in range(len(player)):
+        # Doing stuff to players
+        if(player[p].ball > 0):
+            player[p].passing()
+        # Printing player debug details
+        # print("p[{}].x : {}; p[{}].y : {}\n".format(p, player[p].pos_x, p, player[p].pos_y))
+        # Drawing player details
+        pg.draw.circle(main, player_color, (int((player[p].pos_x * space_scale) + center), int((player[p].pos_y * space_scale) + center)), player_size)
+        pg.draw.line(main, path_color, (int((player[p].pos_x * space_scale) + center), int((player[p].pos_y * space_scale) + center)), (int((player[p].target.pos_x * space_scale) + center), int((player[p].target.pos_y * space_scale) + center)), 2)
+        # txt = font.render(str(player[p].ball), False, ball_color)
+        txt = font.render(str(player[p].id), 0, ball_color)
+        main.blit(txt, (int(player[p].pos_x * space_scale + center + txt_offset), int(player[p].pos_y * space_scale + center + txt_offset)))
+            
+    pg.display.flip()
